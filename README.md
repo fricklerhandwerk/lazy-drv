@@ -36,7 +36,7 @@ let
     attrs = { example = { example-alias = "example-executable"; } };
   };
 in
-rec {
+{
   inherit example;
   shell = pkgs.mkShellNoCC {
     packages = [

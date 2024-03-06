@@ -25,8 +25,8 @@ let
     };
   };
 in
-rec {
-  inherit scripts lazy;
+{
+  inherit scripts;
   shell = with pkgs; mkShellNoCC {
     packages = lib.attrValues lazy.scripts ++ [
       npins
