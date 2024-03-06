@@ -9,6 +9,54 @@ But sometimes it would be nice to have a large closure only realised when it's a
 
 This tool is inspired by [TVL's `lazy-deps`](https://cs.tvl.fyi/depot@0c0edd5928d48c9673dd185cd332f921e64135e7/-/blob/nix/lazy-deps/default.nix?).
 
+It trades saving initial build time against adding a startup time overhead.
+And it meshes well with [`attr-cmd`](https://github.com/fricklerhandwerk/attr-cmd), a library for producing command line programs from attribute sets.
+
+## Example
+
+```nix
+# ./default.nix
+{
+  sources ? import ./npins,
+  system ? builtins.currentSystem,
+}:
+let
+  pkgs = import sources.nixpkgs {
+    inherit system;
+    config = { };
+    overlays = [ ];
+  };
+  inherit (pkgs.callPackage "${sources.lazy-run}/lib.nix" {}) lazy-run;
+  example = pkgs.writeShellScriptBin "example-executable" "echo I am lazy";
+  lazy = with pkgs.lib; lazy-run {
+    source = "${with fileset; toSource {
+      root = ./.;
+      fileset = unions [ ./default.nix ./npins ];
+    }}";
+    attrs = { example = { example-alias = "example-executable"; } };
+  };
+in
+rec {
+  inherit example;
+  shell = pkgs.mkShellNoCC {
+    packages = [
+      lazy.example
+      pkgs.npins
+    ];
+  };
+}
+```
+
+```console
+$ nix-shell -p npins --run "npins init"
+$ nix-shell -A shell
+[nix-shell:~]$ example-alias
+this derivation will be built:
+  /nix/store/...-example.drv
+building '/nix/store/...-example-alias.drv'...
+I am lazy
+```
+
 ## Usage
 
 `lazy-run` takes as argument an attribute set:
@@ -60,52 +108,6 @@ Calling such an executable will invoke `nix-build` to realise the actual executa
 > **Note**
 >
 > There is of course a performance penalty at start-up of such an executable, which is traded for a saving of build time for the environment it's supposed to be used in.
-
-## Example
-
-```nix
-# ./default.nix
-{
-  sources ? import ./npins,
-  system ? builtins.currentSystem,
-}:
-let
-  pkgs = import sources.nixpkgs {
-    inherit system;
-    config = { };
-    overlays = [ ];
-  };
-  inherit (pkgs.callPackage "${sources.lazy-run}/lib.nix" {}) lazy-run;
-  example = pkgs.writeShellScriptBin "example-executable" "echo I am lazy";
-  lazy = with pkgs.lib; lazy-run {
-    source = "${with fileset; toSource{
-      root = ./.;
-      fileset = unions [ ./default.nix ./npins ];
-    }}";
-    attrs = { example = { example-alias = "example-executable"; } };
-  };
-in
-rec {
-  inherit example;
-  shell = pkgs.mkShellNoCC {
-    packages = [
-      lazy.example
-      pkgs.npins
-    ];
-  };
-}
-```
-
-```console
-$ nix-shell -p npins --run "npins init"
-$ nix-shell -A shell
-[nix-shell:~]$ example-alias
-this derivation will be built:
-  /nix/store/...-example.drv
-building '/nix/store/...-example-alias.drv'...
-building '/nix/store/...-example-alias.drv'...
-I am lazy
-```
 
 ## Future work
 
