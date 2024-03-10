@@ -70,7 +70,7 @@ rec {
         (join " " nix-build-args)
       ]);
 
-  lazy-build =
+  lazify = lazifier:
     { source
     , attrs
     , nix ? null
@@ -78,41 +78,32 @@ rec {
     , nix-build-env ? { }
     }:
     let
-      lazify = attrpath: drv:
-        assert attrpath-exists "lazy-build" source attrpath;
-        writeShellApplication {
-          inherit (drv) name;
-          text = ''${nix-build { inherit source attrpath nix nix-build-args nix-build-env; }} "$@"'';
-        };
+      lazificator = attrpath: drv:
+        assert attrpath-exists "lazify" source attrpath;
+        let
+          build-command = nix-build { inherit source attrpath nix nix-build-env nix-build-args; };
+        in
+        lazifier build-command drv;
     in
-    assert file-is-autocallable "lazy-build" source;
-    mapFileAttrsRecursiveCond lib.isDerivation lazify source attrs;
+    assert file-is-autocallable "lazify" source;
+    mapFileAttrsRecursiveCond lib.isDerivation lazificator source attrs;
+
+  lazy-build =
+    let
+      build = nix-build: drv:
+        writeShellApplication { inherit (drv) name; text = ''exec ${nix-build} "$@"''; };
+    in
+    lazify build;
 
   lazy-run =
-    { source
-    , attrs
-    , nix ? null
-    , nix-build-args ? [ ]
-    , nix-build-env ? { }
-    }:
     let
-      lazify = attrpath: drv:
-        assert attrpath-exists "lazy-run" source attrpath;
-        let
-          store-path = nix-build {
-            inherit source attrpath nix nix-build-env;
-            nix-build-args = nix-build-args ++ [ "--no-out-link" ];
-          };
-        in
+      run = nix-build: drv:
         writeShellApplication {
           name = drv.meta.mainProgram;
-          text = ''
-            exec "$(${store-path})"/bin/${drv.meta.mainProgram} "$@"
-          '';
+          text = ''exec "$(${nix-build} --no-out-link)"/bin/${drv.meta.mainProgram} "$@"'';
         };
     in
-    assert file-is-autocallable "lazy-run" source;
-    mapFileAttrsRecursiveCond lib.isDerivation lazify source attrs;
+    lazify run;
 
   mapFileAttrsRecursiveCond = pred: f: path: attrs:
     with lib;
