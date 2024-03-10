@@ -27,20 +27,19 @@ let
     overlays = [ ];
   };
   inherit (pkgs.callPackage "${sources.lazy-run}/lib.nix" {}) lazy-run;
-  example = pkgs.writeShellScriptBin "example-executable" "echo I am lazy";
+  example = pkgs.writeShellScriptBin "example-command" "echo I am lazy";
   lazy = with pkgs.lib; lazy-run {
     source = "${with fileset; toSource {
       root = ./.;
       fileset = unions [ ./default.nix ./npins ];
     }}";
-    attrs = { example = { example-alias = "example-executable"; } };
+    attrs = { inherit examle; };
   };
 in
 {
   inherit example;
   shell = pkgs.mkShellNoCC {
-    packages = [
-      lazy.example
+    packages = [(with lib; collect isDerivation lazy) ++ [
       pkgs.npins
     ];
   };
@@ -50,10 +49,10 @@ in
 ```console
 $ nix-shell -p npins --run "npins init"
 $ nix-shell -A shell
-[nix-shell:~]$ example-alias
+[nix-shell:~]$ example-command
 this derivation will be built:
-  /nix/store/...-example.drv
-building '/nix/store/...-example-alias.drv'...
+  /nix/store/...-example-command.drv
+building '/nix/store/...-example-command.drv'...
 I am lazy
 ```
 
@@ -71,16 +70,13 @@ I am lazy
 
   If the path points to a single file, the Nix experession in the file must not refer to other files.
 
-  The most robust approach is using a file from a  [file set](https://nixos.org/manual/nixpkgs/stable/#sec-functions-library-fileset).
+  The most robust approach is specifying source files with [file set library](https://nixos.org/manual/nixpkgs/stable/#sec-functions-library-fileset).
 
 - `attrs` (attribute set)
 
-  Nested attribute set denoting [attribute paths](https://nix.dev/manual/nix/2.19/language/operators#attribute-selection) to derivations in the expression cat `source` to wrap.
-  Each leaf attribute set denotes aliases:
-  Names of executables to make accessible through the wrapper are mapped to executables from the referenced derivation.
-  If the leaf attribute set is empty, `meta.mainProgram` of the derivation is mapped to an executable of the same name.
+  Nested attribute set of derivations.
+  It must correspond to a top-level attribute set in the expression at `source`.
 
-  Leaf attributes which are not attribute sets are not changed.
 
 - `nix` (derivation, optional)
 
@@ -102,8 +98,9 @@ I am lazy
   [Environment variables](https://nix.dev/manual/nix/2.19/command-ref/nix-build#common-environment-variables) to set on the invocation of `nix-build` for the on-demand realisation.
 
 It returns an attribute set with the same structure as `attrs`.
-Its leaves are derivations that produce executables with the names as specified in the leaves of the `attrs` parameter.
-Calling such an executable will invoke `nix-build` to realise the actual executable provided by the wrapped derivation.
+Its leaves are derivations that each produce an executable named after the `meta.mainProgram` attribute of the original derivation in `attrs`.
+Calling such an executable will invoke `nix-build` to realise and run the actual executable provided by the wrapped derivation.
+Leaf attributes which are not derivations are not changed.
 
 > **Note**
 >

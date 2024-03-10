@@ -1,6 +1,5 @@
 { sources ? import ./npins
 , system ? builtins.currentSystem
-,
 }:
 let
   pkgs = import sources.nixpkgs {
@@ -18,17 +17,13 @@ let
       root = ./.;
       fileset = unions [ ./test.nix ./npins ./lib.nix ];
     }}/test.nix";
-    attrs = {
-      scripts = mapAttrs
-        (name: value: { "${name}-alias" = "${name}-executable"; })
-        scripts;
-    };
+    attrs = { inherit scripts; };
   };
 in
 {
   inherit scripts;
   shell = with pkgs; mkShellNoCC {
-    packages = lib.attrValues lazy.scripts ++ [
+    packages = (with lib; collect isDerivation lazy) ++ [
       npins
     ];
   };
