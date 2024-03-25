@@ -1,4 +1,4 @@
-# `lazy-run`
+# `lazy-drv`
 
 Build executables from Nix derivations on demand.
 
@@ -7,7 +7,7 @@ Build executables from Nix derivations on demand.
 Nix does not allow on-demand [realisation](https://nix.dev/manual/nix/2.19/glossary#gloss-realise) of store paths.
 But sometimes it would be nice to have a large closure only realised when it's actually accessed, for example when a rarely-used helper command is run.
 
-This tool is inspired by [TVL's `lazy-deps`](https://cs.tvl.fyi/depot@0c0edd5928d48c9673dd185cd332f921e64135e7/-/blob/nix/lazy-deps/default.nix?).
+This tool is inspired by [TVL's `lazy-deps`](https://cs.tvl.fyi/depot@0c0edd5928d48c9673dd185cd332f921e64135e7/-/blob/nix/lazy-deps/default.nix).
 
 It trades saving initial build time against adding a startup time overhead.
 And it meshes well with [`attr-cmd`](https://github.com/fricklerhandwerk/attr-cmd), a library for producing command line programs from attribute sets.
@@ -15,40 +15,32 @@ And it meshes well with [`attr-cmd`](https://github.com/fricklerhandwerk/attr-cm
 ## Example
 
 ```nix
-# ./default.nix
-{
-  sources ? import ./npins,
-  system ? builtins.currentSystem,
-}:
+# default.nix
 let
-  pkgs = import sources.nixpkgs {
-    inherit system;
-    config = { };
-    overlays = [ ];
-  };
-  inherit (pkgs.callPackage "${sources.lazy-run}/lib.nix" {}) lazy-run;
+  pkgs = import <nixpkgs> {};
+  lazy-drv = pkgs.callPackage <lazy-drv> {};
+
   example = pkgs.writeShellScriptBin "example-command" "echo I am lazy";
-  lazy = with pkgs.lib; lazy-run {
-    source = "${with fileset; toSource {
+
+  lazy = lazy-drv.lib.lazy-run {
+    source = "${with pkgs.lib.fileset; toSource {
       root = ./.;
-      fileset = unions [ ./default.nix ./npins ];
+      fileset = unions [ ./default.nix ];
     }}";
-    attrs = { inherit examle; };
+    attrs = { inherit example; };
+    nix-build-args = [ "--no-out-link" ];
   };
 in
 {
   inherit example;
   shell = pkgs.mkShellNoCC {
-    packages = [(with lib; collect isDerivation lazy) ++ [
-      pkgs.npins
-    ];
+    packages = with lib; collect isDerivation lazy;
   };
 }
 ```
 
 ```console
-$ nix-shell -p npins --run "npins init"
-$ nix-shell -A shell
+$ nix-shell -A shell -I lazy-drv=https://github.com/fricklerhandwerk/lazy-drv/tarball/master
 [nix-shell:~]$ example-command
 this derivation will be built:
   /nix/store/...-example-command.drv

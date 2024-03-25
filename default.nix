@@ -1,16 +1,11 @@
-{ sources ? import ./npins
-, system ? builtins.currentSystem
-,
-}:
 let
-  pkgs = import sources.nixpkgs {
-    inherit system;
-    config = { };
-    overlays = [ ];
-  };
+  sources = import ./npins;
 in
+{ pkgs ? import sources.nixpkgs { inherit system; config = { }; overlays = [ ]; }
+, system ? builtins.currentSystem
+}:
 {
-  inherit (pkgs.callPackage ./lib.nix { }) lazy-path;
+  lib = pkgs.callPackage ./lib.nix { };
 
   shell = pkgs.mkShellNoCC {
     packages = [
