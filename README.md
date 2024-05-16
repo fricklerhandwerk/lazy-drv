@@ -13,13 +13,13 @@ And it meshes well with [`attr-cmd`](https://github.com/fricklerhandwerk/attr-cm
 
 ## Installation
 
-``` shell-session
+```shell-session
 nix-shell -p npins
 npins init
 npins add github fricklerhandwerk lazy-drv -b main
 ```
 
-``` nix
+```nix
 # default.nix
 let
   sources = import ./npins;
@@ -59,7 +59,7 @@ Input attributes are the same as in the second argument to [`lazify`](#liblazy-d
 >
 > ### Make derivations in an attribute set build lazily
 >
-> ``` nix
+> ```nix
 > # example.nix
 > { pkgs, lib }:
 > let
@@ -81,7 +81,7 @@ Input attributes are the same as in the second argument to [`lazify`](#liblazy-d
 > }
 > ```
 >
-> ``` console
+> ```console
 > $ nix-shell -A shell -I lazy-drv=https://github.com/fricklerhandwerk/lazy-drv/tarball/master
 > [nix-shell:~]$ example-output
 > this derivation will be built:
@@ -104,7 +104,7 @@ Input attributes are the same as in the second argument to [`lazify`](#liblazy-d
 >
 > ### Build a derivation on demand and run its main executable
 >
-> ``` nix
+> ```nix
 > # example.nix
 > { pkgs, lib }:
 > let
@@ -127,7 +127,7 @@ Input attributes are the same as in the second argument to [`lazify`](#liblazy-d
 > }
 > ```
 >
-> ``` console
+> ```console
 > $ nix-shell -A shell -I lazy-drv=https://github.com/fricklerhandwerk/lazy-drv/tarball/master
 > [nix-shell:~]$ example-command
 > this derivation will be built:
@@ -182,7 +182,7 @@ Make a command line that calls `nix-build` on an `attrpath` in a `source` file.
 >
 > ### Generate a command line
 >
-> ``` nix
+> ```nix
 > # example.nix
 > { pkgs, lib }:
 > lib.lazy-drv.nix-build {
@@ -196,7 +196,7 @@ Make a command line that calls `nix-build` on an `attrpath` in a `source` file.
 > }
 > ```
 >
-> ``` console
+> ```console
 > $ nix-instantiate --eval
 > "NIX_PATH= nix-build /nix/store/...-source -A foo.bar --no-out-link"
 > ```

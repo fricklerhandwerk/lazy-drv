@@ -8,9 +8,9 @@
         "repo": "git-hooks"
       },
       "branch": "main",
-      "revision": "c915997b2a906a8e801888d24249c9083136faed",
-      "url": "https://github.com/fricklerhandwerk/git-hooks/archive/c915997b2a906a8e801888d24249c9083136faed.tar.gz",
-      "hash": "1d5qhcrfk06kczad8j74xby0l6a40y0vqbsawjy66h21i537152s"
+      "revision": "aecdc1339e1322385e120aa1a257840839e91928",
+      "url": "https://github.com/fricklerhandwerk/git-hooks/archive/aecdc1339e1322385e120aa1a257840839e91928.tar.gz",
+      "hash": "07h6ig6gm24pj2naf9j5vap3j8snxszardjfg8jvbrpprxfk8cim"
     },
     "nixdoc": {
       "type": "Git",

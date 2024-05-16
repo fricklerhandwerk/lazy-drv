@@ -1,66 +1,34 @@
-let
-  sources = import ./npins;
-  nixdoc-package = { sources, lib, rustPlatform }:
-    let
-      src = sources.nixdoc;
-      package = (lib.importTOML "${src}/Cargo.toml").package;
-    in
-    rustPlatform.buildRustPackage {
-      pname = package.name;
-      version = package.version;
-      inherit src;
-      cargoLock = {
-        lockFile = "${src}/Cargo.lock";
-      };
-    };
-in
 {
-  pkgs ? import sources.nixpkgs {
-    inherit system;
-    config = { };
-    overlays = [ (final: prev: { inherit nixdoc; })];
-  },
-  nixdoc ? pkgs.callPackage nixdoc-package { inherit sources; },
-  git-hooks ? import sources.git-hooks { inherit pkgs system; },
+  sources ? import ./nix/sources,
   system ? builtins.currentSystem,
+  pkgs ? import sources.nixpkgs { inherit system; config = { }; overlays = [ ]; },
+  # a newer version of Nixpkgs ships with an improved rnix-parser,
+  # but nixdoc upstream does not expose the package recipe...
+  # https://github.com/nix-community/nixdoc/pull/125
+  nixdoc ? pkgs.callPackage ./nix/nixdoc.nix { inherit sources; },
+  git-hooks ? import sources.git-hooks { inherit pkgs system; },
 }:
 let
-  update-readme = pkgs.writeShellApplication {
-    name = "pre-commit-hook";
-    runtimeInputs = with pkgs; [ git pkgs.nixdoc busybox perl ];
-    text = ''
-      nixdoc --category lazy-drv --description "\`lazy-drv\`" --file lib.nix | awk '
-      BEGIN { p=0; }
-      /^\:\:\:\{\.example\}/ { print "> **Example**"; p=1; next; }
-      /^\:\:\:/ { p=0; next; }
-      p { print "> " $0; next; }
-      { print }
-      ' | sed 's/[[:space:]]*$//' | sed 's/ {#[^}]*}//g' | \
-          sed 's/function-library-//g' | perl -pe 's/\(#([^)]+)\)/"(#" . $1 =~ s|\.||gr . ")" /eg' > README.md
-      {
-        changed=$(git diff --name-only --exit-code);
-        status=$?;
-      } || true
-
-      if [ $status -ne 0 ]; then
-        echo Files updated by pre-commit hook:
-        echo "$changed"
-        exit $status
-      fi
-    '';
+  update-readme = pkgs.callPackage ./nix/nixdoc-to-github.nix { inherit nixdoc; } {
+    category = "lazy-drv";
+    description = "\\`lazy-drv\\`";
+    file = "${toString ./lib.nix}";
+    output = "${toString ./README.md}";
   };
   inherit (git-hooks) lib;
+  # wrapper to account for the custom lockfile location
+  npins = pkgs.callPackage ./nix/npins.nix { };
 in
 {
   lib.lazy-drv = pkgs.callPackage ./lib.nix { };
 
   shell = pkgs.mkShellNoCC {
     packages = [
-      pkgs.npins
-      pkgs.nixdoc
+      npins
+      nixdoc
     ];
     shellHook = ''
-      ${lib.git-hooks.pre-commit update-readme}
+      ${with lib.git-hooks; pre-commit (wrap.abort-on-change update-readme)}
     '';
   };
 }
