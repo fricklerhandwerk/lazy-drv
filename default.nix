@@ -1,17 +1,16 @@
 let
   sources = import ./npins;
-  nixdoc-overlay = src: final: prev:
+  nixdoc-package = { sources, lib, rustPlatform }:
     let
-      package = (final.lib.importTOML "${src}/Cargo.toml").package;
+      src = sources.nixdoc;
+      package = (lib.importTOML "${src}/Cargo.toml").package;
     in
-    {
-      nixdoc = final.rustPlatform.buildRustPackage {
-        pname = package.name;
-        version = package.version;
-        inherit src;
-        cargoLock = {
-          lockFile = "${src}/Cargo.lock";
-        };
+    rustPlatform.buildRustPackage {
+      pname = package.name;
+      version = package.version;
+      inherit src;
+      cargoLock = {
+        lockFile = "${src}/Cargo.lock";
       };
     };
 in
@@ -19,9 +18,9 @@ in
   pkgs ? import sources.nixpkgs {
     inherit system;
     config = { };
-    overlays = [ (nixdoc-overlay nixdoc)];
+    overlays = [ (final: prev: { inherit nixdoc; })];
   },
-  nixdoc ? sources.nixdoc,
+  nixdoc ? pkgs.callPackage nixdoc-package { inherit sources; },
   git-hooks ? import sources.git-hooks { inherit pkgs system; },
   system ? builtins.currentSystem,
 }:
