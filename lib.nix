@@ -1,22 +1,72 @@
+/**
+  Build executables from Nix derivations on demand.
+
+  # Motivation
+
+  Nix does not allow on-demand [realisation](https://nix.dev/manual/nix/2.19/glossary#gloss-realise) of store paths.
+  But sometimes it would be nice to have a large closure only realised when it's actually accessed, for example when a rarely-used helper command is run.
+
+  This tool is inspired by [TVL's `lazy-deps`](https://cs.tvl.fyi/depot@0c0edd5928d48c9673dd185cd332f921e64135e7/-/blob/nix/lazy-deps/default.nix).
+
+  It trades saving initial build time against adding a startup time overhead.
+  And it meshes well with [`attr-cmd`](https://github.com/fricklerhandwerk/attr-cmd), a library for producing command line programs from attribute sets.
+
+  # Installation
+
+  ```shell-session
+  nix-shell -p npins
+  npins init
+  npins add github fricklerhandwerk lazy-drv -b main
+  ```
+
+  ```nix
+  # default.nix
+  let
+    sources = import ./npins;
+  in
+  {
+    pkgs ? import sources.nixpkgs { inherit system; config = { }; overlays = [ ]; },
+    lazy-drv ? import sources.lazy-drv { inherit pkgs system; },
+    system ? builtins.currentSystem,
+  }:
+  let
+    lib = pkgs.lib // lazy-drv.lib;
+  in
+  pkgs.callPackage ./example.nix { inherit lib; }
+  ```
+  # Future work
+
+  Obviously this is just a cheap trick that can't do more than run selected commands from derivations.
+
+  More fancy things, such as lazily exposing `man` pages or other auxiliary data from a package, would probably require integration into a configuration management framework like NixOS, since every tool in question would have to play along.
+
+  This could indeed be quite powerful:
+  Imagine wiring up `man` to accept an additional option `--nixpkgs`.
+  It would then first inspect `$MANPATH`, and on failure leverage [`nix-index`](https://github.com/nix-community/nix-index) to realise the appropriate derivation on the fly.
+
+  One current limitation is that the Nix expression underlying the lazy derivation still needs to evaluated.
+  This can become costly for large expressions.
+  Another layer of indirection, which also defers evaluation, could be added to avoid that.
+*/
 { lib, symlinkJoin, writeShellApplication }:
 rec {
   /**
     Replace derivations in an attribute set with calls to `nix-build` on these derivations.
 
-    Input attributes are the same as in the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify-attrs).
+    Input attributes are the same as in the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify).
 
-    # Example
+    :::{.example}
+
+    # Make derivations in an attribute set build lazily
 
     ```nix
-    # default.nix
+    # example.nix
+    { pkgs, lib }:
     let
-      pkgs = import <nixpkgs> {};
-      lazy-drv = pkgs.callPackage <lazy-drv> {};
-
       example = pkgs.writeText "example-output" "Built on demand!";
 
-      lazy = lazy-drv.lib.lazy-build {
-        source = "${with pkgs.lib.fileset; toSource {
+      lazy = lib.lazy-drv.lazy-build {
+        source = "${with lib.fileset; toSource {
           root = ./.;
           fileset = unions [ ./default.nix ];
         }}";
@@ -26,7 +76,7 @@ rec {
     {
       inherit example;
       shell = pkgs.mkShellNoCC {
-        packages = with pkgs.lib; collect isDerivation lazy;
+        packages = with lib; collect isDerivation lazy;
       };
     }
     ```
@@ -39,6 +89,8 @@ rec {
     building '/nix/store/...-example-output.drv'...
     [nix-shell:~]$ cat result
     Built on demand!
+    ```
+    :::
   */
   lazy-build =
     let
@@ -48,22 +100,22 @@ rec {
     lazify build;
 
   /**
-    Replace derivations in an attribute set with calls to the executable specified in each derivations `meta.mainProgram`.
+    Replace derivations in an attribute set with calls to the executable specified in each derivation's `meta.mainProgram`.
 
     Input attributes are the same as in the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify-attrs).
 
-    # Example
+    :::{.example}
+
+    # Build a derivation on demand and run its main executable
 
     ```nix
-    # default.nix
+    # example.nix
+    { pkgs, lib }:
     let
-      pkgs = import <nixpkgs> { };
-      lazy-drv = pkgs.callPackage <lazy-drv> { };
-
       example = pkgs.writeShellScriptBin "example-command" "echo I am lazy";
 
-      lazy = lazy-drv.lib.lazy-run {
-        source = "${with pkgs.lib.fileset; toSource {
+      lazy = lib.lazy-drv.lazy-run {
+        source = "${with lib.fileset; toSource {
           root = ./.;
           fileset = unions [ ./. ];
         }}";
@@ -74,7 +126,7 @@ rec {
     {
       inherit example;
       shell = pkgs.mkShellNoCC {
-        packages = with pkgs.lib; collect isDerivation lazy;
+        packages = with lib; collect isDerivation lazy;
       };
     }
     ```
@@ -87,6 +139,7 @@ rec {
     building '/nix/store/...-example-command.drv'...
     I am lazy
     ```
+    :::
   */
   lazy-run =
     let
@@ -136,15 +189,15 @@ rec {
 
       [Environment variables](https://nix.dev/manual/nix/2.19/command-ref/nix-build#common-environment-variables) to set on the invocation of `nix-build` for the on-demand realisation.
 
-    # Example
+    :::{.example}
+
+    # Generate a command line
 
     ```nix
-    let
-      pkgs = import <nixpkgs> {};
-      lazy-run = import <lazy-run> {};
-    in
-    nix-build {
-      source = ${with pkgs.lib.fileset; toSource {
+    # example.nix
+    { pkgs, lib }:
+    lib.lazy-drv.nix-build {
+      source = with lib.fileset; toSource {
         root = ./.;
         fileset = unions [ ./default.nix ./npins ];
       }};
@@ -155,8 +208,10 @@ rec {
     ```
 
     ```console
+    $ nix-instantiate --eval
     "NIX_PATH= nix-build /nix/store/...-source -A foo.bar --no-out-link"
     ```
+    :::
   */
   nix-build =
     { source
@@ -183,7 +238,7 @@ rec {
        It can return anything, but in practice would produce a derivation with a shell script that executes the command line and processes the build result.
        See the sources of [`lazy-build`](#function-library-lib.lazy-drv.lazy-build) and [`lazy-run`](#function-library-lib.lazy-drv.lazy-run) for examples.
 
-    2. An attribute set: {#function-library-lib.lazy-drv.lazify-attrs}
+    2. An attribute set:
 
        - `attrs` (attribute set)
 
@@ -209,24 +264,6 @@ rec {
          Default: `{ }`
 
          Same as the `nix-build-env` attribute in the argument to the [`nix-build` function](#function-library-lib.lazy-drv.nix-build).
-
-    # Example
-
-    ```nix
-    nix-build {
-      source = ${with fileset; toSource {
-        root = ./.;
-        fileset = unions [ ./default.nix ./npins ];
-      }};
-      attrpath = [ "foo" "bar" ];
-      nix-build-env = { NIX_PATH=""; };
-      nix-build-args = [ "--no-out-link" ];
-    }
-    ```
-
-    ```console
-    NIX_PATH= nix-build /nix/store/...-source -A foo.bar --no-out-link
-    ```
   */
   lazify = lazifier:
     { source
@@ -272,9 +309,9 @@ rec {
           (__functionArgs (import path)))
     else true;
 
-    attrpath-exists = context: path: attrpath:
+  attrpath-exists = context: path: attrpath:
     if lib.hasAttrByPath attrpath (import path { }) then true else
-      throw "${context}: attribute path '${join "." attrpath}' does not exist in '${toString path}'";
+    throw "${context}: attribute path '${join "." attrpath}' does not exist in '${toString path}'";
 
   join = lib.concatStringsSep;
 
