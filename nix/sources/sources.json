@@ -12,17 +12,17 @@
       "url": "https://github.com/fricklerhandwerk/git-hooks/archive/aecdc1339e1322385e120aa1a257840839e91928.tar.gz",
       "hash": "07h6ig6gm24pj2naf9j5vap3j8snxszardjfg8jvbrpprxfk8cim"
     },
-    "nixdoc": {
+    "nixdoc-to-github": {
       "type": "Git",
       "repository": {
         "type": "GitHub",
-        "owner": "nix-community",
-        "repo": "nixdoc"
+        "owner": "fricklerhandwerk",
+        "repo": "nixdoc-to-github"
       },
-      "branch": "master",
-      "revision": "2cccd0e126782756629ab39be0c4f10663a14fc9",
-      "url": "https://github.com/nix-community/nixdoc/archive/2cccd0e126782756629ab39be0c4f10663a14fc9.tar.gz",
-      "hash": "1icm5abpq2d9fyn42wg7nf9fh1ff751i9sip38ng5irwbdp6vva3"
+      "branch": "main",
+      "revision": "2a5826e460df7deb8618084fa3df1d1882e352d3",
+      "url": "https://github.com/fricklerhandwerk/nixdoc-to-github/archive/2a5826e460df7deb8618084fa3df1d1882e352d3.tar.gz",
+      "hash": "18dnhcdx661fs2x9gf9dwvsvyw7j2gximgikw3325g8v8cjrkgs0"
     },
     "nixpkgs": {
       "type": "Git",
