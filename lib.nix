@@ -53,7 +53,7 @@ rec {
   /**
     Replace derivations in an attribute set with calls to `nix-build` on these derivations.
 
-    Input attributes are the same as in the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify).
+    Input attributes are the union of the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify) and [`nix-build`](#function-library-lib.lazy-drv.nix-build).
 
     :::{.example}
 
@@ -68,7 +68,7 @@ rec {
       lazy = lib.lazy-drv.lazy-build {
         source = "${with lib.fileset; toSource {
           root = ./.;
-          fileset = unions [ ./default.nix ];
+          fileset = unions [ ./example.nix ];
         }}";
         attrs = { inherit example; };
       };
@@ -93,16 +93,26 @@ rec {
     :::
   */
   lazy-build =
+    { source
+    , attrs
+    , predicate ? lib.isDerivation
+    , nix ? null
+    , nix-build-args ? [ ]
+    , nix-build-env ? { }
+    }:
     let
-      build = nix-build: drv:
-        writeShellApplication { inherit (drv) name; text = ''exec ${nix-build} "$@"''; };
+      build = attrpath: drv:
+        let
+          result = nix-build { inherit source attrpath nix nix-build-args nix-build-env; };
+        in
+        writeShellApplication { inherit (drv) name; text = ''exec ${result} "$@"''; };
     in
-    lazify build;
+    lazify build { inherit source attrs predicate; };
 
   /**
     Replace derivations in an attribute set with calls to the executable specified in each derivation's `meta.mainProgram`.
 
-    Input attributes are the same as in the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify-attrs).
+    Input attributes are the union of the second argument to [`lazify`](#function-library-lib.lazy-drv.lazify) (except `predicate`, since one can only run the executable from a single derivation) and [`nix-build`](#function-library-lib.lazy-drv.nix-build) (where `nix-build-args` defaults to `[ "--no-out-link" ]`, since one usually doesn't want the `result` symlink).
 
     :::{.example}
 
@@ -117,10 +127,9 @@ rec {
       lazy = lib.lazy-drv.lazy-run {
         source = "${with lib.fileset; toSource {
           root = ./.;
-          fileset = unions [ ./. ];
+          fileset = unions [ ./example.nix ];
         }}";
         attrs = { inherit example; };
-        nix-build-args = [ "--no-out-link" ];
       };
     in
     {
@@ -142,14 +151,23 @@ rec {
     :::
   */
   lazy-run =
+    { source
+    , attrs
+    , nix ? null
+    , nix-build-args ? [ "--no-out-link" ]
+    , nix-build-env ? {}
+    }:
     let
-      run = nix-build: drv:
+      run = attrpath: drv:
+        let
+          result = nix-build { inherit source attrpath nix nix-build-args nix-build-env; };
+        in
         writeShellApplication {
           name = drv.meta.mainProgram;
-          text = ''exec "$(${nix-build} --no-out-link)"/bin/${drv.meta.mainProgram} "$@"'';
+          text = ''exec "$(${result})"/bin/${drv.meta.mainProgram} "$@"'';
         };
     in
-    lazify run;
+    lazify run { inherit source attrs; };
 
   /**
     Make a command line that calls `nix-build` on an `attrpath` in a `source` file.
@@ -228,60 +246,60 @@ rec {
       ]);
 
   /**
-    Make derivations in an attribute set lazy.
+    Apply a function to each leaf attribute in a nested attribute set, which must come from a Nix file that is accessible to `nix-build`.
 
     # Arguments
 
-    1. `lazifier` (`[String] -> Derivation -> a`)
+    1. `lazifier` (`[String] -> a -> b`)
 
-       This function is given a command line as produced by the [`nix-build` function](#function-library-lib.lazy-drv.nix-build), and the derivation it's supposed to operate on.
-       It can return anything, but in practice would produce a derivation with a shell script that executes the command line and processes the build result.
-       See the sources of [`lazy-build`](#function-library-lib.lazy-drv.lazy-build) and [`lazy-run`](#function-library-lib.lazy-drv.lazy-run) for examples.
+       This function is given the attribute path in the nested attribute set being processed, and the value it's supposed to operate on.
+       It is ensured that the attribute path exists in the given `source` file, and that this `source` file can be processed by `nix-build`.
+
+       The function can return anything.
+       In practice it would usually produce a derivation with a shell script that runs `nix-build` on the attribute path in the source file, and processes the build result.
 
     2. An attribute set:
+
+       - `source` (path or string)
+
+         Path to the Nix file declaring the attribute set `attrs`.
+         The Nix file must be accessible to `nix-build`:
+         - The path must exist in the file system
+         - If it leads to a directory instead of a Nix file, that directory must contain `default.nix`
+         - If the Nix file contains a function, all its arguments must have default values
 
        - `attrs` (attribute set)
 
          Nested attribute set of derivations.
          It must correspond to a top-level attribute set in the expression at `source`.
 
-       - `source` (path or string)
+       - `predicate` (`a -> bool`, optional)
 
-         Path to the Nix file declaring the attribute set `attrs`.
+         A function to determine what's a leaf attribute.
+         Since the intended use case is to create a `nix-build` command line, one meaningful alternative to the default value is [`isAttrsetOfDerivations`](#function-library-lib.lazy-drv.isBuildable).
 
-       - `nix` (derivation or string, optional)
-
-         Same as the `nix` attribute in the argument to the [`nix-build` function](#function-library-lib.lazy-drv.nix-build).
-
-       - `nix-build-args` (list of strings, optional)
-
-         Default: `[ ]`
-
-         Same as the `nix-build-args` attribute in the argument to the [`nix-build` function](#function-library-lib.lazy-drv.nix-build).
-
-       - `nix-build-env` (attribute set, optional)
-
-         Default: `{ }`
-
-         Same as the `nix-build-env` attribute in the argument to the [`nix-build` function](#function-library-lib.lazy-drv.nix-build).
+         Default: [`lib.isDerivation`](https://nixos.org/manual/nixpkgs/stable/#function-library-lib.attrsets.isDerivation)
   */
   lazify = lazifier:
     { source
     , attrs
-    , nix ? null
-    , nix-build-args ? [ ]
-    , nix-build-env ? { }
+    , predicate ? lib.isDerivation
     }:
     let
-      lazificator = attrpath: drv:
+      lazificator = attrpath: value:
         assert attrpath-exists "lazify" source attrpath;
-        let
-          build-command = nix-build { inherit source attrpath nix nix-build-env nix-build-args; };
-        in
-        lazifier build-command drv;
+        lazifier attrpath value;
     in
     assert file-is-autocallable "lazify" source;
-    mapAttrsRecursiveCond' lib.isDerivation lazificator attrs;
+    mapAttrsRecursiveCond' predicate lazificator attrs;
+
+  /**
+    Check if the given value is a derivation or an attribute set of derivations.
+
+    This emulates what `nix-build` expects as the contents of `default.nix`.
+  */
+  isBuildable = value:
+    with lib; isAttrs value && (value.type or null == "derivation" || all isDerivation (attrValues value));
 
   /**
     Apply function `f` to all nested attributes in attribute set `attrs` which satisfy predicate `pred`.
