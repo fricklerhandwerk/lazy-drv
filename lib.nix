@@ -328,7 +328,11 @@ rec {
     else true;
 
   attrpath-exists = context: path: attrpath:
-    if lib.hasAttrByPath attrpath (import path { }) then true else
+    let
+      imported = import path;
+      source = if isFunction imported then imported else imported { };
+    in
+    if lib.hasAttrByPath attrpath source then true else
     throw "${context}: attribute path '${join "." attrpath}' does not exist in '${toString path}'";
 
   join = lib.concatStringsSep;
